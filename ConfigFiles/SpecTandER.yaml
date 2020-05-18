@@ -1,0 +1,170 @@
+processor-toolbox:
+
+    processors:
+        - { type: "spec-processor",                  name: "spec1" }
+        - { type: "spec-processor",                  name: "spec2" }
+        - { type: "data-accumulator",                name: "acc" }
+        - { type: "gain-variation",                  name: "gainvar" }
+        - { type: "variable-spectrum-discriminator", name: "discrim" }
+        - { type: "sequential-track-finder",         name: "seq-tr-clust"}
+        - { type: "track-proc-ws",                   name: "tr-proc-ws"}
+        - { type: "multi-peak-track-builder",        name: "mpt-builder"} 
+        - { type: "multi-peak-event-builder",        name: "mpe-builder"}      
+        - { type: "basic-root-writer",               name: "brw" }
+        - { type: "root-spectrogram-writer",         name: "rsw"}
+        - { type: "root-tree-writer",                name: "rtw"}
+   
+    connections:
+              # Take the power spectra from the input file and send them to accumulator
+            - signal: "spec1:ps"         
+              slot: "acc:ps"
+
+              # Copy the accumulated power spectra to gain variation
+            - signal: "acc:ps-finished"  
+              slot: "gainvar:ps-var"
+
+              # Write the accumulated power spectra to ROOT file
+            - signal: "acc:ps-finished"  
+              slot: "brw:ps"
+
+              # Write the gain-var histogram to ROOT file 
+            - signal: "gainvar:gain-var" 
+              slot: "brw:gain-var"
+
+              # Copy the gain-var histogram to the discriminator
+            - signal: "gainvar:gain-var"
+              slot: "discrim:gv"
+
+              # Take the power spectra from the second input file and write them to a ROOT file
+            - signal: "spec2:ps"
+              slot: "rsw:ps"
+
+              # Copy the power spectra from the second input file to the discriminator
+            - signal: "spec2:ps"
+              slot: "discrim:ps-pre"
+ 
+              # Write the spectrogram of points that are above discrim. threshold to ROOT file 
+            - signal: "discrim:disc-1d"
+              slot: "rtw:disc-1d"
+
+              # Pass sparse spectrogram to clustering algorithm for event ID
+            - signal: "discrim:disc-1d"
+              slot: "seq-tr-clust:disc-1d"
+
+              # Output sequential event candidates
+            - signal: "seq-tr-clust:seq-cand"
+              slot: "tr-proc-ws:seq-cand"
+
+              # Emitting Done Signal from spec processor to catch remaining lines/tracks
+            - signal: "spec2:spec-done"
+              slot: "seq-tr-clust:done"
+
+            #   # Write processed tracks to a ROOT tree
+            # - signal: "tr-proc-ws:track"
+            #   slot: "rtw:proc-track"      
+            # Note: I think that rtw effectively ends the processing. Verifying that. 
+            # Also want to know if the mt-event will contain all the disc, tracks, and mpts...
+              # Send Tracks to be grouped into mpts
+            - signal: "tr-proc-ws:track"
+              slot: "mpt-builder:track"     
+
+              # Send mpts to be grouped into mpes
+            - signal: "mpt-builder:mpt"
+              slot: "mpe-builder:mpt"
+
+              # Emitting DONEs (I'm not sure If I can group these all together) neither of the bellow connections currently work
+            # - signal: "seq-tr-clust:clustering-done"
+            #   slot:  "mpt-builder: do-clustering"
+
+            # - signal: "mpt-builder: mpt-done"
+            #   slot: "mpe-builder: do-clustering"
+
+            - signal: "mpe-builder:event"
+              slot: "rtw:mt-event"
+
+              # NEED TO FIGURE OUT HOW THE DONE SIGNALS WORK FOR THESE.
+              # NEED TO FIGURE OUT HOW TO WRITE THE EVENT with rtw (seems like you just use rtw for most data types)
+
+            #   # Make sure to send the spec-done signal so the ROOT file gets written (Question: What happens when you emit the spec2:spec-done signal twice?)
+            # - signal: "spec2:spec-done"
+            #   slot: "rsw:write-file"
+            #   # I am not sure if I care about the above file rn
+    run-queue:
+        - spec1
+        - spec2
+
+   
+spec1:
+    filename: "../inputs/specfiles/Fake_bootstrap_2020-05-06-10-44-57_000006.spec"
+    spectra: 300
+    ROACH-spect-avg: 8
+    freq-bins: 8192
+    min-freq: 1.0e6
+    max-freq: 1600.0e6
+    header-bytes: 32
+
+acc:
+    number-to-average: 0
+    signal-interval: 0
+
+gainvar:
+    normalize: false
+    min-bin: 300
+    max-bin: 8000
+    fit-points: 100
+
+spec2:
+    filename: "../inputs/specfiles/Fake_bootstrap_2020-05-06-10-44-57_000006.spec"
+    spectra: 300
+    ROACH-spect-avg: 8
+    freq-bins: 8192
+    min-freq: 1.0e6
+    max-freq: 1600.0e6
+    header-bytes: 32
+
+discrim:
+    min-bin: 300
+    max-bin: 8000
+    sigma-threshold: 4.0   # was 4.5
+
+brw:
+    output-file: "../outputs/rootfiles/SpecToSparseGramBRW.root"
+    file-flag: "recreate"
+
+rsw:
+    output-file: "../outputs/rootfiles/SpecToSparseGramRSW.root"
+    file-flag: recreate
+    mode: single
+    n-time-bins: 3000
+    min-freq: 5.0e6
+    max-freq: 1595.0e6
+
+seq-tr-clust:
+    min-frequency: 200e6 # minimum frequency (in Hz)
+    max-frequency: 1550.0e6 # maximum frequency (in Hz)
+    initial-slope : 4.0e9 # slope of a track with 1 point
+    slope-method: weighted-first-point-ref # method to update line slope after point collection
+    n-slope-points: 3 # max points to include in the slope calculation
+    time-gap-tolerance: 2e-4 #max gap between points in a line (in sec.)
+    frequency-acceptance: 600.0e3 #max freq gap between point and extrapolated line (in Hz)
+    trimming-threshold: 1  # snr threshold for the first and last point of a candidate
+    min-points: 2 # line is converted to a track iff it has collected more than this # of points
+    min-slope: 0 # line is converted to a track iff line slope is > than this (in Hz/s)
+
+tr-proc-ws:
+    min-slope: 5.0e9 # minimum slope (Hz/s), Brent had: 1.0e7
+    min-points: 2
+
+mpt-builder:
+    sideband-time-tol: 2e-3 # Note that this shouldn't matter until we have sidebands
+
+mpe-builder:
+    sideband-time-tol: 2e-3 # This has the same name as above but I think it may play a different role here
+    jump-time-tol: 5e-3 #Given two multi-peak track objects, if the start of the second is within jump-time-tol of the first, they are grouped into an event.
+        # units match the units of start time and end time of the input track object, should be seconds
+
+rtw:
+    output-file: "../outputs/rootfiles/SpecToSparseGramRTW_events.root"
+    file-flag: recreate
+
+

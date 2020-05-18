@@ -1,0 +1,25 @@
+processor-toolbox:
+    processors:
+      - type: spec-processor
+        name: spec
+      - type: basic-root-writer
+        name: writer
+
+    connections:
+      - signal: "spec:ps"    
+        slot: "writer:ps"
+
+    run-queue:
+      - spec
+
+spec:
+    filename: "../inputs/specfiles/Fake_bootstrap_2020-04-10-15-32-55_000000.spec"
+    spectra: 10
+    freq-bins: 8192
+    min-freq: 0.0
+    max-freq: 1600.00
+    header-bytes: 32
+    
+writer:
+    output-file: "../outputs/rootfiles/spec_ps.root"
+    file-flag: recreate

@@ -1,0 +1,30 @@
+processor-toolbox:
+    processors:
+      - type: spec-processor
+        name: spec
+      - type: root-spectrogram-writer
+        name: writer
+
+    connections:
+      - signal: "spec:ps"  
+        slot: "writer:ps"
+
+    run-queue:
+      - spec
+
+spec:
+    filename: "../inputs/specfiles/Fake_bootstrap_2020-04-10-15-32-55_000000.spec"
+    spectra: 1600    # Though 0 is interpreted at the entire file in the egg reader that may not be the case with the spec processor. 
+    freq-bins: 8192
+    min-freq: 0
+    max-freq: 1600 # So has brent switched the units of this from Hz to MHz?
+    header-bytes: 32
+
+writer:
+    output-file: "../outputs/rootfiles/spec_spectrogram.root"
+    file-flag: recreate
+    min-time: 0.0
+    max-time: 0.01
+    min-freq: 0
+    max-freq: 1600
+    
